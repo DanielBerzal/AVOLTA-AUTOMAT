@@ -37,11 +37,15 @@ or scaffold an application without a concrete project request.
 
 - Standalone `topsort` is a user-requested exception to the delegation pipeline:
   check homepage URLs/store selections, transform existing authorized local or
-  captured live What's Trending or MENUBANNER HTML into local CMS copy/paste output,
-  maintain their agent/skill contracts as explicitly requested, and create local
+  captured live What's Trending, MENUBANNER, CLPBANNER or CLPCONTENT HTML into local CMS copy/paste
+  output, maintain their agent/skill contracts as explicitly requested, and create local
   offline generators only when requested. MENUBANNER inventories all navbar entries
   but transforms only confirmed Beauty/Liquor/Accessories; confirmed missing regions
-  in those families may get three no-fallback slots under its contract.
+  in those families may get three no-fallback slots under its contract. CLPBANNER
+  reads the megamenu link lists (excluding Brands) and, as a narrow exception to
+  no-crawl, visits only those same-host HTTPS CLP URLs read-only. CLPCONTENT uses
+  that same discovery for bottom editorial blocks of two or three columns;
+  missing blocks are reported, never created. No broader crawling is authorized.
   Live capture is not CMS authoring
   recovery or permission to publish; retain rendered URLs without inventing Magento
   directives and disclose source/validation limits.

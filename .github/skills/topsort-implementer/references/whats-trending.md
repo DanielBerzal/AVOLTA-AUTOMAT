@@ -39,6 +39,8 @@ Preservar slides originales, orden/conteo, imagenes, links, copy y accesibilidad
 Builder y campanas hidden desktop/mobile en fuente local. En captura live
 autorizada, usar las URLs renderizadas sin reconstruir directivas Magento;
 generar copia local del carrusel seleccionado y declarar alcance/limites.
+Los `href` al mismo host de la home se entregan relativos (path+query+fragmento
+desde `/`, conservando `/idioma/store_id/`); imagenes y otros hosts no cambian.
 No materializar ni ejecutar directivas existentes.
 No tomar `transform:translate3d`, `transition-duration`, clases active ni clones
 live como fuente. `.swiper-slide-duplicate` / `.slick-cloned` solo se excluyen

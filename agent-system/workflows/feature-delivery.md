@@ -8,11 +8,14 @@ custom runtime or dependency installation in this template.
 
 The standalone `topsort` exception in [shared instructions](../../AGENTS.md)
 precedes this table only for that agent's homepage checks, authorized local or
-captured-live What's Trending/MENUBANNER transformations into local copy/paste
+captured-live What's Trending/MENUBANNER/CLPBANNER/CLPCONTENT transformations into local copy/paste
 output, explicitly requested maintenance of those agent/skill contracts, and
 explicitly requested offline generators. MENUBANNER covers only the confirmed
 Beauty/Liquor/Accessories families, including missing-region creation under its
-contract; inventory still covers all navbar entries. Other types remain excluded.
+contract; inventory still covers all navbar entries. CLPCONTENT reuses only the
+CLPBANNER same-host HTTPS megamenu CLP discovery (excluding Brands), for bottom
+editorial blocks of two or three columns; report missing blocks without creating
+them. Other types remain excluded.
 Live output is not CMS authoring recovery
 or a deployment; preserve rendered URLs without inventing Magento directives.
 It runs its skills and focused self-review directly, without delegation or

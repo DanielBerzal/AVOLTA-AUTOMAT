@@ -1,25 +1,35 @@
 ---
 name: topsort-implementer
-description: "Usar para implementar Topsort TRENDING o MENUBANNER desde URLs o tiendas, con HTML CMS por categoria de menu o carrusel, o crear bajo peticion un generador local por lote preservando contenido e idempotencia."
+description: "Usar para implementar Topsort TRENDING, MENUBANNER, CLPBANNER o CLPCONTENT (contenido inferior de 2/3 columnas en CLP) desde URLs o tiendas, con HTML CMS por menu/carrusel, o crear bajo peticion un generador local por lote preservando contenido e idempotencia."
 ---
 
 # Topsort Implementer
 
-Dispatcher reutilizable: `whats-trending` (`TRENDING`) y `MENUBANNER`. Lee el
-[contrato Trending](./references/whats-trending.md) o el
-[contrato MENUBANNER](./references/menu-banner.md) segun el tipo y ejecuta primero
+Dispatcher reutilizable: `whats-trending` (`TRENDING`), `MENUBANNER`, `CLPBANNER` y `CLPCONTENT`. Lee el
+[contrato Trending](./references/whats-trending.md), el
+[contrato MENUBANNER](./references/menu-banner.md) o el
+[contrato CLPBANNER](./references/clp-banner.md) o el
+[contrato CLPCONTENT](./references/clp-content.md) segun el tipo y ejecuta primero
 [topsort-checker](./../topsort-checker/SKILL.md) como procedimiento en la misma
 sesion, no subagente. Conserva su evidencia y limitaciones.
 
-Sin componente indicado, preguntar TRENDING o MENUBANNER (MEGAMENU) antes de
-ejecutar; nunca asumir ni implementar ambos. MEGAMENU/mega menu es MENUBANNER.
+Sin componente indicado, preguntar TRENDING, MENUBANNER (MEGAMENU), CLPBANNER o CLPCONTENT antes de
+ejecutar; nunca asumir ni implementar varios. MEGAMENU/mega menu es MENUBANNER.
 Una seleccion explicita ya resuelve esta pregunta, no volver a pedirla.
 
 Las reglas de Swiper/slides, ID whats-trending, cuatro bindings y CSS final de
 Conversion Local/Revision Minima son SOLO TRENDING. MENUBANNER usa su contrato
 para detectar, transformar y validar: tres slots fijos, siete variables,
 decision por categoria, sin mirror/atributos cliente ni CSS de Trending.
-Ambos reutilizan adquisicion segura, preservacion, formato y limites comunes.
+CLPBANNER usa el suyo: un slot, tres variables, decision por CLP y un HTML por
+megamenu. CLPCONTENT usa el suyo: bloque inferior de 2/3 columnas, ranks 1,2 o
+1,2,3, seis variables y CSS especifico por variante; ausente se reporta sin crear.
+Todos reutilizan adquisicion segura, preservacion, formato y limites comunes.
+
+URLs relativas (todos los tipos, nuevas generaciones): todo `href` al mismo host
+de la home se entrega como path+query+fragmento desde `/`, conservando
+`/idioma/store_id/`; otros hosts y directivas Magento no cambian; imagenes pueden
+quedar absolutas. Detalle en el contrato CLPBANNER, seccion URLs Relativas.
 
 ## Autorizacion Y Decision
 
@@ -35,6 +45,12 @@ bajo su propio workflow; la excepcion no se extiende a otros agentes.
 - ABSENT: no crear TRENDING automaticamente. MENUBANNER permite crear tres slots
   sin fallback en Beauty/Liquor/Accessories sin region, solo con inventario
   suficiente y familia confirmada; otras entradas no se convierten.
+  CLPBANNER decide por CLP: SIMPLE_NO_TOPSORT se convierte;
+  NO_BANNER/SKIPPED_ALREADY_TOPSORT/NON_SIMPLE/AMBIGUOUS/BLOCKED se reportan sin
+  HTML (sin banner no se crea implementacion vacia) y el lote continua.
+  CLPCONTENT convierte solo PRESENT_NO_TOPSORT confirmado de 2/3 columnas;
+  ABSENT se reporta sin crear; SKIPPED_ALREADY_TOPSORT, NON_SUPPORTED,
+  AMBIGUOUS y BLOCKED no generan HTML. Continuar con otros bloques/CLP.
   AMBIGUOUS o ERROR/BLOCKED: detener
   edicion y pedir fuente/seleccion/permisos. PRESENT_NO_TOPSORT: convertir
   unicamente el candidato presente autorizado. Si ya hay tags Topsort reales
@@ -85,11 +101,23 @@ bajo su propio workflow; la excepcion no se extiende a otros agentes.
   incluyendo CTA, aria-label, mobile/desktop, todos los links y tres slots;
   HTML comun por categoria, nunca combinar categorias distintas ni omitir la
   seccion de cada store/idioma del reporte padre. Nombre y entrega en su contrato.
+  Para CLPBANNER y CLPCONTENT comparar por megamenu: mismos Category IDs, estados por CLP,
+  imagenes, alt y links resueltos contra su home; un HTML comun solo si todo
+  coincide. Nombre y entrega en su contrato.
 
   Antes de crear cualquier HTML, compara todas las paginas elegibles del mismo
-  tipo, hostname e idioma resueltas por checker. No agrupar idiomas distintos ni
-  tipos/websites distintos. Las omitidas por Topsort ya presente, bloque ausente,
+  tipo y hostname resueltas por checker. Solo para CLPBANNER comparar tambien idiomas
+  distintos y agruparlos cuando su contenido/estructura funcional sean iguales,
+  siguiendo su contrato (`shared/` y todos los idiomas en los metadatos). Los demas
+  tipos mantienen la agrupacion por idioma. Nunca mezclar tipos/websites distintos.
+  Las omitidas por Topsort ya presente, bloque ausente,
   errores o identidad ambigua no forman parte del archivo comun.
+
+  CLPCONTENT compara solo dentro del mismo idioma, nunca entre idiomas, y aplica
+  el criterio de equivalencia completa de su contrato,
+  incluyendo variante 2/3, CTA, descripcion, alt y ambos destinos de cada columna.
+  Idiomas distintos siempre requieren HTML separados, aunque el contenido coincida.
+  TRENDING y MENUBANNER conservan su agrupacion por idioma.
 
   1. Compara mediante parser el carrusel seleccionado y sus cards, conservando
     cantidad y orden: imagenes, `src`, `srcset`/sources si existen, alt, headline,
@@ -111,7 +139,8 @@ bajo su propio workflow; la excepcion no se extiende a otros agentes.
     antes de agrupar. No inferir igualdad porque los stores compartan idioma.
   5. IDs numericos ordenados y sin duplicados: `store-197_199-es.html` para grupo
     comun; `store-197-es.html` si solo hay un miembro. Conservarlo en la carpeta
-    del idioma. La identidad incluye hostname + Store ID + idioma; nunca reutilizar
+    del idioma, salvo grupos CLPBANNER multidioma en `shared/` segun su contrato.
+    La identidad incluye hostname + Store ID + idioma; nunca reutilizar
     un archivo de otro grupo por coincidencia de ID o nombre.
   6. El comentario del HTML y la seccion del MD enumeran TODOS los store views con
     nombre, `ID:` y URL reales, un miembro por linea; despues el codigo comun una
@@ -184,7 +213,12 @@ bajo su propio workflow; la excepcion no se extiende a otros agentes.
 
 Para MENUBANNER seguir exclusivamente HTML De Autoria, Ranks Y Fallbacks y
 Magento Y Fuentes de su contrato; las subsecciones siguientes son TRENDING.
-Reglas comunes de seguridad/preservacion siguen vigentes para ambos tipos.
+Para CLPBANNER seguir exclusivamente HTML De Autoria y URLs Relativas de su
+contrato.
+Para CLPCONTENT seguir exclusivamente Estructura Documentada, CSS Documentado Al
+Final y URLs, Agrupacion Y Entrega de su contrato; no usar Swiper ni CSS Trending,
+ni slots vacios/enlace opcional de CLPBANNER. No sustituir ctaText por headline.
+Reglas comunes de seguridad/preservacion siguen vigentes para todos los tipos.
 
 ### Captura Live Autorizada
 
@@ -202,7 +236,9 @@ del DOM, nunca edites el original para fingir implementacion persistida.
   Conserva estilos de contenido y accesibilidad. No copies scripts, secretos,
   URLs peligrosas ni handlers `on*` no revisados; bloquea si requieren decisiones.
 - Conserva headline, descripcion, imagen y link actuales, resolviendo URLs
-  relativas con la URL real de la home. No sintetices `{{store ...}}` o
+  relativas con la URL real de la home. Si una URL live no carga o no termina en 35 s, abandonala,
+  marca BLOCKED con motivo `timeout 35s` y continua con la siguiente; nunca
+  quedes esperando. No sintetices `{{store ...}}` o
   `{{media ...}}` a partir de URLs absolutas. Las directivas que existan en una
   fuente local se preservan como texto. No inventes copy para campos required.
 - Normaliza solo la envoltura documentada: banner, `.swiper-container.py-0.brands-swiper1`
@@ -255,7 +291,11 @@ Una revision por fuente transformada, contra la documentacion:
   stylesheet canonico unico, al final; resultado valido e idempotente NO_OP.
 
 CSV de template: validar header, once columnas y variables del tipo: TRENDING
-cuatro required TRUE; MENUBANNER siete campos, cinco TRUE y dos FALSE. Validar
+cuatro required TRUE; MENUBANNER siete campos, cinco TRUE y dos FALSE; CLPBANNER
+tres campos, dos TRUE (mainImage, mobileImage) y uno FALSE (altText).
+Para CLPCONTENT, validar contra su contrato de seis variables; el CSV adjunto TRENDING no es
+equivalente y requiere correccion/confirmacion antes de entregar template creativo.
+No inventar required, defaults ni renombrar headline a ctaText. Validar
 si se cambia/entrega; no confundir con manifest ni creative import. Reparar un
 defecto local y repetir solo el check afectado; no fingir ejecuciones. Screenshots
 o pruebas visuales solo cuando se solicitan o se afecta layout, no como pipeline
@@ -296,8 +336,12 @@ unico `report.md` en la carpeta padre de tipo/hostname, con secciones por
 store/idioma y enlaces directos a los HTML. Dentro de las carpetas de idiomas,
 solo HTML; no crear MD por store/idioma ni reportes intermedios. El resumen de
 la ejecucion permanece en la raiz, sin sustituir el reporte de cada grupo.
+Excepcion de ubicacion solo CLPBANNER: los grupos equivalentes entre idiomas usan
+`shared/` con solo HTML, enlazados desde el mismo reporte padre; no duplicarlos
+en las carpetas de cada idioma.
 
-- What's Trending usa `TRENDING`; mega menu usa `MENUBANNER`. Al declarar otro tipo, pregunta que nombre
+- What's Trending usa `TRENDING`; mega menu usa `MENUBANNER`; banner de CLP usa
+  `CLPBANNER`; contenido inferior de CLP usa `CLPCONTENT`. Al declarar otro tipo, pregunta que nombre
   en mayusculas quiere el usuario y guardalo en su contrato antes de generar;
   un nombre de carpeta no habilita tipos que siguen UNSUPPORTED.
 - `store name` procede del hostname real de la URL con un parser, tomando el
@@ -331,6 +375,21 @@ la ejecucion permanece en la raiz, sin sustituir el reporte de cada grupo.
   no cambiar IDs Topsort. Validar colisiones antes de renombrar o crear archivos.
   El reporte padre incluye codigo completo y enlace directo de cada categoria,
   segun contrato MENUBANNER; no crear MD dentro de las carpetas de idiomas.
+- CLPBANNER usa el mismo `report.md` padre (`CLPBANNER-[store name]/`), con
+  secciones por store/idioma, megamenus excluidos (Brands) y arbol de CLP por
+  megamenu con nivel, `category[ID]` y estado. En `[idioma]/`, un HTML por
+  megamenu: `[SECCION]-store-[IDs]-[idioma].html` (nombre del megamenu en
+  mayusculas ASCII, guiones), con un comentario `<!-- WPP Cat[ID] <Nombre general>
+  <dd/mm/aa> Topsort -->` y bloque por cada CLP convertida, precedido
+  inmediatamente por `<!-- Categoria <nombre real> -->`. Grupos multidioma en
+  `shared/`, con todos los idiomas en filename y metadatos segun su contrato.
+  Sin MD en carpetas de idioma. Reporte y resumen raiz incluyen CLP
+  omitidas (Store ID, Category ID, motivo).
+- CLPCONTENT aplica el mismo reporte padre, HTML por megamenu y comentarios
+  Categoria/WPP anteriores, con prefijo `CLPCONTENT`, pero solo bloques presentes
+  convertibles, nunca vacios. Incluir variante, estados y motivos de cada CLP;
+  equivalencia de 2/3 columnas y textos segun su contrato, solo entre stores del
+  mismo idioma. HTML siempre en `[idioma]/`, nunca grupos multidioma ni `shared/`.
 - Resumen `topsortGeneration/[fecha]/report.md`: todas las homes no transformadas,
   incluidas ya implementadas, bloque ausente, tipo no soportado, ambiguas o fallidas.
   Incluir tambien defectos estructurales reales pendientes, sin llamarlos omitidos
@@ -348,9 +407,13 @@ no es omision. TRENDING mantiene su formato y su regla de no crear ausentes.
 
 Para MENUBANNER prevalece Entrega Por Store E Idioma de su contrato: secciones
 en el reporte padre con todas las categorias, HTML por categoria convertida y enlaces
-coherentes. Las reglas siguientes de metadatos, codigo completo, no tablas,
-omite-tags y resumen son comunes; excepcion a ABSENT solo para familias de menu
-elegibles confirmadas. TRENDING conserva las rutas y entrega actuales.
+coherentes. Para CLPBANNER prevalece Entrega Por Store E Idioma de su contrato
+(HTML por megamenu con varios comentarios WPP `Cat[ID]`, uno por CLP).
+Para CLPCONTENT prevalece URLs, Agrupacion Y Entrega de su contrato, con HTML
+por megamenu, Categoria/WPP por bloque y ausencia sin creacion. Metadatos, codigo
+completo, no tablas, omite-tags y resumen son comunes. La unica excepcion de creacion
+es MENUBANNER elegible confirmado, segun contrato. TRENDING, CLPBANNER (NO_BANNER)
+y CLPCONTENT no crean bloques ausentes.
 
 Elegir MD autoriza reportes por tipo/store, HTML por grupo equivalente transformado y
 resumen raiz de omisiones. Chat: enlaces y avisos breves de stores omitidos, sin
@@ -377,20 +440,46 @@ rellena. Solo la ausencia verificada del atributo
 `data-ts-field="description:textContent"` se reporta como binding ausente, no
 como descripcion vacia o contenido pendiente.
 
-1. Cada HTML empieza con comentario de metadatos de TODOS sus store views y
-  debajo el fragmento completo, individual o comun. Ejemplo de formato de lista
+1. TODOS los HTML generados, de cualquier tipo soportado, empiezan con un
+  comentario informativo y, tras una linea en blanco, los comentarios de
+  autoria del bloque (Categoria y WPP en CLPBANNER/CLPCONTENT; solo WPP en los demas).
+  El primero es informativo:
+  un miembro por linea con nombre real, idioma en mayusculas, `ID:<store_id>`
+  y URL completa, seguido de `IDIOMA: <IDIOMA EN MAYUSCULAS>` en su propia linea.
+  No duplicar el idioma si ya termina el nombre del store. En MENUBANNER,
+  anadir debajo `<Categoria> - Category ID:<category_id>`; en CLPBANNER/CLPCONTENT,
+  `<Megamenu> - Category ID:<ID del wrapper>`; en otros tipos,
+  indicar el nombre del componente sin inventar Category ID.
+  El comentario de autoria es `<!-- WPP <Nombre general de la tienda> <dd/mm/aa> Topsort -->`,
+  inmediatamente antes del fragmento, sin linea en blanco entre ambos. En
+  CLPBANNER/CLPCONTENT, cada bloque de CLP lleva `<!-- Categoria <nombre real> -->`, despues
+  `<!-- WPP Cat[ID] <Nombre general> <dd/mm/aa> Topsort -->` y el bloque,
+  sin lineas vacias entre ellos. Para grupos multidioma, enumerar todos los
+  idiomas en IDIOMA y los nombres reales de categoria segun su contrato.
+  Usar el nombre general confirmado del website/destino, sin terminal, Store ID
+  ni idioma; si es desconocido, pedirlo, no derivarlo por intuicion. La fecha
+  corresponde a la generacion local real, comun al pedido, no a la captura.
+  Para Magento se copia desde Categoria en CLPBANNER/CLPCONTENT o WPP en los demas,
+  excluyendo el informativo.
+  Aplicar tambien a codigo en chat, MD y salidas de generadores locales.
+  Ejemplo de formato de lista
   (nombres/URLs reales de la seleccion; no implica que estas homes sean iguales):
 
 ```html
 <!--
 BARCELONA DELIVER T1 ES ID:197 - https://barcelonadeliver.shopdutyfree.com/es/197/
 BARCELONA DELIVER T2 ES ID:199 - https://barcelonadeliver.shopdutyfree.com/es/199/
+IDIOMA: ES
+Beauty - Category ID:92
 -->
+
+<!-- WPP Barcelona Deliver 06/11/26 Topsort -->
 ```
 
-   El comentario es informativo, no una instruccion a ejecutar. Nombre e ID reales
-   de la seleccion; validar/escapar metadatos para que no contengan `--` o cierren
-   el comentario con `-->`. Puede incluir URL/idioma/fuente fuera del codigo activo.
+   Los comentarios no son instrucciones a ejecutar. Nombre e ID reales
+   de la seleccion; validar/escapar todos los metadatos para que no contengan
+   `--` o cierren el comentario con `-->`. Revisar ambos comentarios, su orden,
+   idioma, categoria/componente, nombre general y fecha en la revision propia.
 2. En el MD, una seccion por archivo: listar `NOMBRE ID:<store_id> - <URL completa>`
   de TODOS los miembros, un store view por linea, y luego estado breve,
   bloque fenced `html` completo y enlace al HTML comun. No sustituir

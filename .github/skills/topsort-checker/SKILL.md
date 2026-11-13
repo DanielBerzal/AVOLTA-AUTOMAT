@@ -1,18 +1,22 @@
 ---
 name: topsort-checker
-description: "Usar con URLs o tiendas/destinos para resolver sus homes e idiomas y comprobar Topsort TRENDING o MENUBANNER, todas las categorias del navbar, tags, slots, ranks y bindings en solo lectura."
+description: "Usar con URLs o tiendas/destinos para resolver sus homes e idiomas y comprobar Topsort TRENDING, MENUBANNER, CLPBANNER o CLPCONTENT (contenido inferior de 2/3 columnas en CLP), tags, slots, ranks y bindings en solo lectura."
 ---
 
 # Topsort Checker
 
-Dispatcher reutilizable: `whats-trending` (`TRENDING`) y `MENUBANNER`.
+Dispatcher reutilizable: `whats-trending` (`TRENDING`), `MENUBANNER`, `CLPBANNER` y `CLPCONTENT`.
 Otros tipos: UNSUPPORTED, solicitar contrato sin intentar deteccion. Lee el
-[contrato Trending](./../topsort-implementer/references/whats-trending.md) o el
-[contrato MENUBANNER](./../topsort-implementer/references/menu-banner.md)
+[contrato Trending](./../topsort-implementer/references/whats-trending.md), el
+[contrato MENUBANNER](./../topsort-implementer/references/menu-banner.md) o el
+[contrato CLPBANNER](./../topsort-implementer/references/clp-banner.md) o el
+[contrato CLPCONTENT](./../topsort-implementer/references/clp-content.md)
 segun el tipo antes de clasificar. Si falta el tipo, preguntar "Que componente
-quieres: TRENDING o MENUBANNER (MEGAMENU)?" antes de comprobar/implementar;
-no asumir ni comprobar ambos. MEGAMENU/mega menu es alias de MENUBANNER,
-TRENDING/What's Trending es `whats-trending`. No repetir si ya esta indicado.
+quieres: TRENDING, MENUBANNER (MEGAMENU), CLPBANNER o CLPCONTENT?" antes de comprobar/implementar;
+no asumir ni comprobar varios. MEGAMENU/mega menu es alias de MENUBANNER,
+TRENDING/What's Trending es `whats-trending`, CLP banner/hero es `CLPBANNER`.
+Contenido editorial inferior de CLP de dos/tres columnas es `CLPCONTENT`.
+No repetir si ya esta indicado.
 Consulta directa, sin pipeline ni delegacion.
 
 ## Resolver URLs O Tiendas
@@ -77,6 +81,22 @@ de la DB actual, no de un numero fijo del reporte historico.
    no aprobados. Verifica destino inicial y cada redireccion antes de seguir;
    si la herramienta no permite ese control, ERROR/BLOCKED. No crawl, SSO,
    formularios, sesiones autenticadas ni navegacion a enlaces de tarjetas.
+   Unica excepcion, solo CLPBANNER y CLPCONTENT: visitar secuencialmente las URLs de la lista
+   de enlaces de los megamenus de la home seleccionada (mismo host, HTTPS, sin
+   Brands/Brand Boutique), con las mismas validaciones; nada mas se sigue.
+   Cache-busting obligatorio: toda URL que el checker abra (home y cada CLP) se
+   navega con un parametro de query nuevo en cada carga, `?ts=ddmmyyhhmm`
+   (hora local, p. ej. `?ts=1211261658`), o `&ts=ddmmyyhhmm` si la URL ya tiene
+   query, para forzar cache fresca y leer la ultima version. Regenerar el valor
+   en cada visita; si la herramienta no permite query, reportarlo. El parametro es
+   solo de navegacion: no se guarda en reportes, enlaces, dedupe/normalizacion de
+   URLs, comentarios ni HTML (`href` y URLs reportadas van sin `ts`); la validacion
+   de host/redirecciones no cambia. No aplica a HTML local suministrado.
+   Timeout obligatorio de 35 s por URL (home o CLP): carga y lectura de cada URL
+   tienen un maximo de 35 s en total. Si no resuelve o no termina a tiempo, abandona
+   esa URL (sin reintentos ni esperas adicionales), registrala como ERROR/BLOCKED
+   con motivo `timeout 35s` (no ABSENT ni exito) y continua con la siguiente URL
+   o destino del lote. Nunca te quedes esperando; al final lista las URLs con timeout.
 4. Captura URL fuente y final, host/store/idioma real, timestamp con zona y
    viewport medido (ancho x alto) para cada captura desktop/mobile autorizada.
    Una redireccion a host/store equivocado es no verificado, no exito silencioso.
@@ -88,6 +108,30 @@ de la DB actual, no de un numero fijo del reporte historico.
    permanente ni sustituto de medicion actual.
 
 ## Inspeccion
+
+CLPCONTENT usa exclusivamente su contrato para el bloque editorial inferior de
+2/3 columnas. Reutiliza descubrimiento y Category ID de CLPBANNER, no su banner
+superior. Ausente: ABSENT, reportar sin HTML. Presente sin
+Topsort: PRESENT_NO_TOPSORT; tags reales en ese bloque: SKIPPED_ALREADY_TOPSORT
+incluso parcial. Ranks exactos segun orden DOM: 1,2 o 1,2,3. Verificar IDs,
+wrappers, seis variables, target en ambos anchors de cada slot, desktop/mobile,
+descripcion desktop y CSS de la variante. Otros layouts: NON_SUPPORTED;
+seleccion incierta: AMBIGUOUS; acceso/identidad insuficiente: BLOCKED. No confundir
+tags de otros bloques con CLPCONTENT ni aplicar mappings/CSV de TRENDING.
+
+CLPBANNER usa su contrato, no las reglas siguientes: por home/idioma inventariar
+megamenus (excluir Brands/Brand Boutique), recoger solo los enlaces de sus listas
+con nivel y menu padre, deduplicar, visitar cada CLP, leer su Category ID del
+ultimo crumb (`category[ID]`) y clasificar el banner superior: SKIPPED_ALREADY_TOPSORT,
+SIMPLE_NO_TOPSORT, NO_BANNER (solo reporte, sin HTML), NON_SIMPLE, AMBIGUOUS o ERROR/BLOCKED. Banner no
+simple u otro bloque: reportar, no implementar. Check solo: sin HTML.
+
+En CLPBANNER el link es opcional: si no hay anchor, no reportar ausencia de
+`ctaLink:href` ni "falta link". Si existe anchor, comprobar su binding. Un
+`href="#"` no es defecto de enlace. Seguir reportando
+bindings de imagen ausentes/erroneos. Al revisar salidas generadas, comprobar
+`<!-- Categoria <nombre real> -->` inmediatamente encima de WPP `Cat[ID]` y
+equivalencia completa de los grupos, tambien entre idiomas segun su contrato.
 
 Las reglas de titulo/Swiper, cuatro bindings y CSS siguientes son SOLO TRENDING.
 Para MENUBANNER usar su contrato: todas las entradas principales del navbar,
@@ -210,4 +254,13 @@ Todos los componentes actuales y futuros siguen esa estructura TRENDING:
 carpetas de idiomas solo con HTML, reporte en la carpeta padre.
 El resumen raiz incluye omisiones por categoria
 y homes totalmente implementadas. Esta adaptacion no cambia TRENDING.
+
+CLPBANNER: una seccion por home/store/idioma con los megamenus excluidos y, por
+megamenu, el arbol de CLP con nivel (principal, sublink, subsublink), nombre,
+`category[ID]`, enlace `Link` con URL absoluta y estado, segun su contrato. Solo check: sin HTML.
+Resumen raiz con CLP omitidas (Store ID, Category ID, motivo).
+CLPCONTENT usa ese mismo arbol por home/store/idioma y megamenu, con su prefijo,
+variante 2/3 y estados propios. ABSENT: "No se ha encontrado el bloque";
+check siempre sin HTML, incluso si hay un candidato convertible. No informar
+ausencia si el acceso o la inspeccion fueron insuficientes: BLOCKED.
 Editar estas personalizaciones no es ejecutar un lote y no requiere MD/chat.

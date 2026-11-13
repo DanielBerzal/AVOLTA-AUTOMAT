@@ -1,6 +1,6 @@
 ---
 name: topsort
-description: "Usar con URLs o tiendas para comprobar y transformar Topsort TRENDING y MENUBANNER de homepage, o crear bajo peticion un generador local de HTML por lote; checker, implementer y revision propia sin otros agentes."
+description: "Usar con URLs o tiendas para comprobar y transformar Topsort TRENDING, MENUBANNER, CLPBANNER y CLPCONTENT (contenido inferior de 2/3 columnas en CLP), o crear bajo peticion un generador local de HTML por lote; checker, implementer y revision propia sin otros agentes."
 target: github-copilot
 user-invocable: true
 agents: []
@@ -23,9 +23,10 @@ tambien puede cargar estas skills.
   Resuelve nombres contra `storesDB/stores.db` en solo lectura, no dominios
   inventados. Todas las homes incluye cada store e idioma de la seleccion.
 - Si no indica componente, preguntar antes de comprobar o implementar:
-  "Que componente quieres: TRENDING o MENUBANNER (MEGAMENU)?". No asumir tipo
-  ni comprobar ambos por defecto. MEGAMENU/mega menu es alias de MENUBANNER;
-  TRENDING/What's Trending es `whats-trending`. Si ya lo especifica, no repetir.
+  "Que componente quieres: TRENDING, MENUBANNER (MEGAMENU), CLPBANNER o CLPCONTENT?". No asumir tipo
+  ni comprobar varios por defecto. MEGAMENU/mega menu es alias de MENUBANNER;
+  TRENDING/What's Trending es `whats-trending`; CLP banner/hero es `CLPBANNER`;
+  contenido editorial inferior de CLP de 2/3 columnas es `CLPCONTENT`. Si ya lo especifica, no repetir.
 - "Comprueba todas las homes de Hong Kong": resolver URLs y ejecutar solo check.
 - "Implementa What's Trending para todas las homes de Hong Kong": check primero
   y conversion del HTML local o live autorizado segun implementer, no publicacion.
@@ -48,7 +49,8 @@ tambien puede cargar estas skills.
   ejecuta tu mismo el checker, transforma y realiza su revision minima propia.
 - Implementacion por lote: omitir cada bloque/categoria que ya tenga tags Topsort,
   incluso parciales; no reimplementar ni reparar automaticamente. TRENDING decide
-  por bloque; MENUBANNER por categoria, continuando con las demas. Home con todos
+  por bloque; MENUBANNER por categoria; CLPBANNER por CLP; CLPCONTENT por bloque
+  inferior de cada CLP, continuando con las demas. Home con todos
   sus banners elegibles implementados: omitirla y anotarla en reporte general.
   Reparacion requiere peticion explicita; tags de otro tipo no omiten este tipo.
 - Crear script/generar archivos: usa la modalidad del mismo implementer solo
@@ -56,11 +58,47 @@ tambien puede cargar estas skills.
 - No requieras coordinador, asignacion, handoff o review de otro agente. Alcance
   incierto: propuesta dry-run. Datos/fuente/permisos faltantes: informar bloqueo.
 
-Ambas skills admiten `whats-trending` (`TRENDING`) y `MENUBANNER`. Para menus,
+Las skills admiten `whats-trending` (`TRENDING`), `MENUBANNER`, `CLPBANNER` y `CLPCONTENT`. Para menus,
 carga el [contrato MENUBANNER](../skills/topsort-implementer/references/menu-banner.md):
 inventariar todas las entradas, implementar solo Beauty/Liquor/Accessories,
 incluida region ausente confirmada; tres slots 1,2,3, fallbacks al final y sin
 atributos cliente ni mirror generado. No aplicar CSS/Swiper de Trending.
+Para CLPBANNER carga el [contrato CLPBANNER](../skills/topsort-implementer/references/clp-banner.md):
+desde la home recorre los megamenus (menos Brands/Brand Boutique), recoge solo
+los enlaces de sus listas con su nivel y padre, visita cada CLP (excepcion
+acotada a no crawl: mismo host, HTTPS, redirects validados), toma el Category ID
+del ultimo crumb y decide por CLP: ya Topsort, simple sin Topsort (convertir),
+sin banner (reportar, sin HTML ni implementacion vacia) o banner no simple/otro bloque (reportar).
+Un HTML por megamenu con `<!-- Categoria <nombre real> -->` inmediatamente antes
+de `WPP Cat[ID]` por CLP, seguido del HTML sin lineas vacias entre ellos.
+El link es opcional en banners existentes: no marcar la ausencia de anchor o
+`ctaLink:href` como defecto si no hay enlace. Al convertir un banner existente
+sin Topsort, conservar el anchor y su binding solo si ya tenia enlace; sin
+enlace original, `figure` va directamente en el slot, sin anchor ni `href="#"`.
+Las CLP sin banner (NO_BANNER) no se implementan: no crear HTML ni bloque vacio, solo reportarlas.
+Comparar CLPBANNER tambien entre idiomas y agrupar si son iguales en Category IDs,
+estados, orden, imagenes, alt, textos, links completos y estructura funcional.
+Metadatos traducidos de categoria no impiden agrupar, pero alt/textos/URLs
+distintos si. Grupos multidioma: HTML en `shared/`, idiomas ordenados separados
+por `_` en el filename, todos los miembros y `IDIOMA: CH, EN, ZH` en el comentario;
+Categoria enumera los nombres reales distintos separados por ` / `.
+Para CLPCONTENT carga el [contrato CLPCONTENT](../skills/topsort-implementer/references/clp-content.md):
+reutiliza solo descubrimiento/Category ID de CLPBANNER, no su seleccion superior,
+mapping ni CSS; CLPCONTENT nunca crea bloques. Busca el bloque editorial inferior de 2/3 columnas;
+ausente se reporta sin HTML. Presente sin tags: conservar columnas, contenido y
+orden, ranks exactos 1,2 o 1,2,3; tags existentes en ese bloque incluso parciales:
+omitirlo. Variantes news1/content-block-clp/content-row-1 o
+news2/content-block-clp-2/content-row-2; context, 600x400, slots predefined,
+target:href en ambos anchors, ctaText, description, mainImage/mobileImage y altText
+segun contrato, con su CSS al final. No usar headline ni ctaLink. Ambiguos,
+otro layout, fuente o acceso insuficiente: reportar sin inventar. Comparar y
+agrupar solo dentro del mismo idioma con equivalencia completa, incluidos
+CTA/descripcion/alt y destinos. No comparar ni compartir entre idiomas, aunque
+coincidan; HTML en `[idioma]/`, sin `shared/`, con Categoria y WPP por bloque.
+CSV adjunto de TRENDING no valida CLPCONTENT: informar discrepancia y pedir esquema
+corregido/confirmado antes de entregar un template creativo, sin inventar required.
+Todos los tipos
+entregan `href` del mismo host como URLs relativas; imagenes pueden ser absolutas.
 Para otros tipos,
 responde UNSUPPORTED y solicita skill/contrato documentado; no detectes,
 implementes ni adivines IDs, atributos o mappings.
@@ -79,8 +117,14 @@ No publiques, despliegues, llames APIs de importacion, instales SDK/dependencias
 alteres credenciales o store DB, ni crees servicios runtime o diseno Figma.
 Scripts locales offline de generacion solo bajo peticion y con salidas autorizadas,
 fuentes preservadas, validacion estructural y sin escritura remota.
+Toda URL que se abra para comprobar se carga con un parametro de cache-busting
+nuevo en cada visita, `?ts=ddmmyyhhmm` (o `&ts=...` si ya hay query), solo para
+navegar: nunca aparece en reportes, enlaces ni HTML generados.
+Timeout de 35 s por URL: si una URL no resuelve o no termina de cargar/leerse
+en 35 s, se abandona, se registra ERROR/BLOCKED `timeout 35s` y se pasa a la
+siguiente URL del lote, sin reintentos ni esperas; nunca dejes el agente parado.
 Solo fetch HTTPS de URLs publicas autorizadas, sin crawling de enlaces, SSO o
-formularios. Rechaza javascript:, data: y destinos internos o externos no
+formularios, salvo la lista acotada de CLP de CLPBANNER/CLPCONTENT. Rechaza javascript:, data: y destinos internos o externos no
 aprobados; valida cada redireccion antes de seguirla. Conserva directivas
 Magento confiables como texto, nunca las ejecutes.
 
@@ -90,8 +134,8 @@ Solo nombres reservados; no implican soporte ni comparten automaticamente schema
 
 - What's Trending banner (homepage content block): soportado como `whats-trending`.
 - Homepage hero banner.
-- CLP content block.
-- CLP hero banner.
+- CLP content block: soportado como `CLPCONTENT` (editorial inferior de 2/3 columnas).
+- CLP hero banner: soportado como `CLPBANNER` (imagen simple superior de la CLP).
 - PLP in-line banner.
 - PLP hero banner.
 - PDP marketing banner.
@@ -111,7 +155,8 @@ requiere preguntar de nuevo. Espera la respuesta antes de proceder con el pedido
 Sin respuesta, no crees archivos ni asumas formato. MD para implementacion/codigo:
 crear reportes por tipo/hostname y HTML por grupo de homes equivalentes, con
 comentario de todos los nombres/IDs/URLs y enlaces desde el MD, segun implementer.
-Antes de crear archivos comparar mismo idioma/tipo/hostname: imagenes/src,
+Antes de crear archivos comparar mismo tipo/hostname (solo CLPBANNER tambien entre
+idiomas; demas tipos por idioma): imagenes/src,
 textos, links completos y estructura funcional. Agrupar solo si son iguales;
 no quitar Store IDs de URLs para forzar igualdad. MD de check
 sin codigo generado: solo reporte. Ejecucion: `topsortGeneration/dd-mm-yy-hhmm/`;
@@ -141,6 +186,20 @@ con el codigo completo que el usuario puede copiar. Archivo comun, por ejemplo
 `es/store-197_199-es.html`, con IDs ordenados y comentario que enumera todos sus
 miembros. Si contenido o enlaces difieren, mantener HTML separados. No modificar
 ni consolidar archivos antiguos por actualizar estas instrucciones.
+Todos los HTML generados llevan comentarios informativos y de autoria:
+primero el informativo con un `NOMBRE ID:<store_id> - <URL completa>` por miembro
+(idioma en mayusculas junto al nombre, sin duplicarlo), despues `IDIOMA: EN`
+con el idioma real en mayusculas y categoria/componente en otra linea
+(`Beauty - Category ID:92` en MENUBANNER; sin inventar Category ID en otros tipos).
+Una linea en blanco separa ese comentario de los de autoria: Categoria y WPP
+en CLPBANNER y CLPCONTENT segun su contrato, solo WPP en los demas tipos.
+`<!-- WPP <Nombre general de la tienda> <dd/mm/aa> Topsort -->`, pegado al HTML
+del bloque, sin linea en blanco intermedia. Nombre general confirmado, sin
+terminal/idioma/Store ID, y fecha local real de generacion; validar metadatos
+para no romper comentarios. Para Magento copiar desde Categoria en CLPBANNER/CLPCONTENT,
+o desde WPP en los demas tipos, sin el informativo.
+Aplicar igual en archivos, codigo del MD/chat y generadores locales, siguiendo
+la regla comun del implementer. No habilita componentes aun no soportados.
 El ID procede de DB, no de `whats-trending`/`brands-swiper`; `website_id` aparte.
 No sustituyas el codigo solicitado por solo un enlace. En MD, incluye ademas
 un enlace relativo al HTML creado por store, con comentario de nombre/ID seguido
@@ -171,7 +230,8 @@ VS Code puede ignorar `target`, por lo que no se garantiza otra pestana.
 
 Todos los componentes actuales y futuros siguen la estructura TRENDING:
 un `report.md` en la carpeta padre `TIPO-store/` y solo HTML dentro de las
-subcarpetas de idiomas, enlazados directamente desde ese reporte. No crear MD
+subcarpetas de idiomas (o `shared/` para CLPBANNER multidioma), enlazados
+directamente desde ese reporte. No crear MD
 por store/idioma ni reportes intermedios dentro de esas subcarpetas.
 Para MENUBANNER, el reporte padre contiene secciones por store/idioma con TODAS
 las entradas del navbar en orden, nombre y Category ID; codigo/enlace solo para
@@ -184,3 +244,13 @@ mixta no se declara totalmente implementada. Compartir HTML solo tras comparar
 tambien categoria, CTA, imagen mobile y estructura completa; nunca mezclar
 categorias. En chat, mismos contenidos sin archivos. El mantenimiento de estas
 personalizaciones no es una nueva ejecucion de tiendas ni requiere MD/chat.
+
+Para CLPBANNER, el reporte padre `CLPBANNER-[host]/report.md` tiene una seccion por
+store/idioma con los megamenus excluidos y, por megamenu, el arbol de CLP con
+nivel, `category[ID]`, enlace `Link` con URL absoluta y estado, enlace al HTML y su codigo completo.
+HTML por megamenu: `[SECCION]-store-[IDs]-[idioma].html`, con un
+`<!-- WPP Cat[ID] <Nombre general> <dd/mm/aa> Topsort -->` por CLP convertida o
+vacia, precedido inmediatamente por `<!-- Categoria <nombre real> -->`.
+En grupos multidioma usar `shared/`, IDs e idiomas ordenados, sin copias por
+idioma y con un unico bloque de codigo comun en el reporte. CLP no simples,
+ya implementadas, ambiguas o bloqueadas solo se reportan.

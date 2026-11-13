@@ -114,7 +114,10 @@ impide saber el conteo/origen, pedir fuente; no duplicar su contenido expandido.
 ## Magento Y Fuentes
 
 Autoria local: preservar directivas autenticas sin ejecutarlas. Captura live:
-conservar URLs renderizadas completas, nunca inventar widgets/media/store.
+conservar URLs renderizadas, nunca inventar widgets/media/store. Los `href` al
+mismo host de la home se entregan relativos (path+query+fragmento desde `/`,
+conservando `/idioma/store_id/`), segun URLs Relativas del contrato CLPBANNER;
+imagenes y otros hosts quedan como estan.
 Trabajar con copia desconectada; no modificar/publicar la web.
 
 Dentro de `href="{{widget ...}}"`, Category Link debe usar exclusivamente
@@ -147,7 +150,12 @@ Category ID permanece en el reporte y comentario, no en el filename. No cambiar
 el ID Topsort `accesories-menu-banner-1` por usar `ACCESSORIES` en el filename.
 Validar ausencia de colisiones; renombrado conserva bytes y actualiza enlaces,
 sin regenerar contenido. Comentario con todos
-los nombres/Store IDs/URLs, idioma y categoria/Category ID. No concatenar varias
+los nombres/Store IDs/URLs, con idioma en mayusculas junto a cada nombre;
+`IDIOMA: <IDIOMA EN MAYUSCULAS>` y `<Categoria> - Category ID:<ID>` en lineas
+separadas. Despues del comentario informativo y una linea en blanco, incluir
+`<!-- WPP <Nombre general de la tienda> <dd/mm/aa> Topsort -->` inmediatamente
+antes del banner, segun la regla comun del implementer. Este segundo comentario
+se copia a Magento junto al bloque; el informativo no. No concatenar varias
 categorias en un unico fragmento pegable. `report.md` del grupo contiene las
 secciones de cada store/idioma y enlaza directamente los HTML; conservar resumen
 raiz de omitidas/defectos. Una categoria
