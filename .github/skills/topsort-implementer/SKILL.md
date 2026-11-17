@@ -39,6 +39,24 @@ ni handoff, y no invoca otros agentes, tampoco para comandos o review. Las skill
 son procedimientos del mismo agente. El Developer general puede usar esta skill
 bajo su propio workflow; la excepcion no se extiende a otros agentes.
 
+- Antes del checker previo, captura o conversion para tiendas/URLs, superar el
+  [Preflight Obligatorio Con Curl](../topsort-checker/SKILL.md#preflight-obligatorio-con-curl):
+  GET solo a cada home seleccionada, con User-Agent `Avolta_QA_Tester`, destinos
+  validados y timeout total de 35 s, sin reintentos. Esperar 7 segundos entre
+  llamadas curl, incluidos errores y redirecciones, con las reglas de pausas y
+  presupuesto del preflight del checker. Cache-busting desactivado por
+  defecto, sin preguntar: anadir `nocache=[TS]` solo si el usuario lo pide
+  expresamente para el pedido actual, segun Adquisicion Segura del checker.
+  Aplicar igual a preflight y capturas live; no usar el antiguo parametro `ts`.
+  Sin homes
+  accesibles: informar por chat y detenerse. Resultado mixto: comunicar URLs,
+  motivos y conteos de bloqueadas/sin respuesta/accesibles por chat y preguntar
+  si se continua solo con las accesibles; esperar confirmacion afirmativa antes
+  de inspeccionar, convertir o crear archivos, incluso si se eligio reporte MD.
+  Sin respuesta, rechazo o cancelacion: no seguir. Reutilizar el preflight del
+  checker en el mismo pedido, no un exito de pedidos anteriores; no sustituir
+  curl por Playwright/Python para eludir fallos. Para entradas exclusivamente
+  locales/offline, no inventar homes ni ampliar permisos de acceso a la red.
 - Confirma HTML local o captura live de URL autorizada, candidato,
   alcance de edicion y defaults. Si alcance de edicion/publicacion es incierto,
   solo dry-run/diff propuesto, nunca una autorizacion implicita de publicar.

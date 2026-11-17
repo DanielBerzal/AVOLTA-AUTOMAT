@@ -48,6 +48,8 @@ Consulta directa, sin pipeline ni delegacion.
    no inferidos. Deduplicar visitas de URLs identicas conservando sus registros.
 6. Validar cada URL con Adquisicion Segura, aunque venga de DB. Procesar el lote
    secuencialmente, reportando cada error sin borrar otras homes del alcance.
+   Antes de inspeccionar banners, ejecutar el Preflight Obligatorio Con Curl y
+   respetar su parada o confirmacion para resultados parciales.
    Reutilizar seleccion/evidencia autorizada para implementar posteriormente si
    el usuario lo pide; nunca convertir por iniciativa tras detectar falta de tags.
 
@@ -64,6 +66,61 @@ ORDER BY store_url;
 Parametro `https://hongkong.shopdutyfree.com/%`. Validar hostname exacto con
 parser de URL despues; no autoriza otros destinos. Idiomas/cantidad proceden
 de la DB actual, no de un numero fijo del reporte historico.
+
+## Preflight Obligatorio Con Curl
+
+Antes de iniciar la inspeccion del checker o cualquier implementacion de las
+tiendas/URLs seleccionadas, comprobar su acceso con curl. Solo se permite resolver
+la seleccion, confirmar el pedido y validar destinos/permisos antes de este paso;
+no inspeccionar banners, descubrir CLP ni generar archivos hasta superar la puerta.
+
+1. Usar exclusivamente las homes autorizadas de cada store e idioma seleccionado,
+   con su `store_url` completo. Deduplicar solo URLs identicas conservando todos
+   sus registros. No sustituirlas por una home por hostname, visitar CLP, seguir
+   enlaces, descargar assets ni ejecutar JavaScript. No inventar homes ni abrir
+   la red para un pedido exclusivamente local/offline.
+2. Ejecutar GET con curl y `--user-agent "Avolta_QA_Tester"`; HEAD no sustituye
+   esta prueba. Aplicar Adquisicion Segura y limite total de 35 s por home
+   (`--max-time` ajustado al tiempo restante), sin reintentos. No anadir
+   cache-busting por defecto ni preguntar si se activa; usar `nocache=[TS]`
+   solo si el usuario lo pide expresamente, segun Adquisicion Segura.
+   Validar cada redireccion antes de seguirla, sin `--location` automatico;
+   los saltos comparten el mismo presupuesto de 35 s y deben conservar la
+   identidad autorizada de la home. Mantener el User-Agent en todos los saltos.
+3. Recoger codigo HTTP, errores y HTML suficiente en memoria para reconocer
+   bloqueos explicitos, sin crear archivos de captura. Clasificar cada URL:
+   ACCESIBLE si devuelve 2xx con HTML utilizable de la home correcta y sin bloqueo
+   detectado; BLOQUEADA ante 403, otros errores HTTP, challenge/captcha, respuesta
+   vacia o insuficiente, o redireccion no autorizada; NO_RESPONDE ante timeout
+   (`timeout 35s`) o errores DNS, conexion o TLS. Indicar siempre el motivo real,
+   sin llamar 403 a otros errores. Un 2xx no demuestra que los banners tengan
+   Topsort ni que funcione el SDK.
+4. Completar secuencialmente el preflight de TODAS las homes, aunque falle una;
+   esperar 7 segundos entre el final de cada llamada curl y el inicio de la
+   siguiente, tambien tras errores y antes de seguir una redireccion validada.
+   No esperar antes de la primera llamada ni despues de la ultima. La pausa
+   entre homes queda fuera del limite de 35 s por home; entre saltos de la
+   misma home cuenta dentro de su presupuesto total y nunca lo amplia.
+   No introducir reintentos ni concurrencia. Solo despues de completar el
+   preflight decidir si puede comenzar el pedido. Mostrar por chat las URLs
+   fallidas, sus motivos y los conteos reales de bloqueadas, sin respuesta y
+   accesibles, independientemente de que la entrega elegida sea MD o chat.
+5. Si no hay ninguna accesible, informar por chat y detener todo el pedido.
+   Si hay accesibles y fallidas, preguntar por chat usando la herramienta de
+   preguntas disponible: "Hay B URLs bloqueadas, N no responden y A accesibles.
+   Quieres continuar solo con las A accesibles?". Sustituir B/N/A por los conteos
+   reales. Esperar confirmacion afirmativa; sin respuesta, rechazo o cancelacion,
+   no continuar ni crear archivos. Con confirmacion, procesar solo las accesibles
+   y conservar las fallidas como ERROR/BLOCKED en la entrega autorizada.
+   Si todas son accesibles, continuar sin esta pregunta adicional.
+6. Sin curl o sin posibilidad de configurar/verificar el User-Agent y las
+   validaciones anteriores: ERROR/BLOCKED, informar por chat y detenerse; no
+   sustituir curl por navegador, Python u otra herramienta para saltar la puerta.
+   Un resultado fallido no autoriza reintentos ni metodos alternativos.
+7. El preflight cubre checker e implementer del mismo pedido y seleccion, sin
+   duplicarlo al pasar de uno a otro. Una nueva orden live requiere uno nuevo;
+   si se anaden homes al pedido, comprobarlas y reevaluar la puerta antes de
+   procesarlas. Reutilizar evidencia historica no sustituye esta comprobacion.
 
 ## Adquisicion Segura
 
@@ -84,14 +141,18 @@ de la DB actual, no de un numero fijo del reporte historico.
    Unica excepcion, solo CLPBANNER y CLPCONTENT: visitar secuencialmente las URLs de la lista
    de enlaces de los megamenus de la home seleccionada (mismo host, HTTPS, sin
    Brands/Brand Boutique), con las mismas validaciones; nada mas se sigue.
-   Cache-busting obligatorio: toda URL que el checker abra (home y cada CLP) se
-   navega con un parametro de query nuevo en cada carga, `?ts=ddmmyyhhmm`
-   (hora local, p. ej. `?ts=1211261658`), o `&ts=ddmmyyhhmm` si la URL ya tiene
-   query, para forzar cache fresca y leer la ultima version. Regenerar el valor
-   en cada visita; si la herramienta no permite query, reportarlo. El parametro es
-   solo de navegacion: no se guarda en reportes, enlaces, dedupe/normalizacion de
-   URLs, comentarios ni HTML (`href` y URLs reportadas van sin `ts`); la validacion
-   de host/redirecciones no cambia. No aplica a HTML local suministrado.
+   Cache-busting opcional y desactivado por defecto: no preguntar si se activa.
+   Sin peticion expresa del usuario para el pedido actual, conservar las URLs y
+   sus queries originales sin anadir parametros de cache-busting.
+   Si lo solicita, usar `nocache=[TS]`, donde `[TS]` es la fecha/hora local
+   `ddmmyyhhmm`: `?nocache=ddmmyyhhmm` o `&nocache=ddmmyyhhmm` si ya hay query
+   (p. ej. `?nocache=1211261658`). Regenerar el valor en cada visita; no usar el
+   antiguo parametro `ts`. Aplicar igual al preflight curl y a la captura con
+   Playwright, tanto en homes como en CLP. Si se solicita y la herramienta no
+   permite query, reportarlo. El parametro anadido por el agente es solo de
+   navegacion: no se guarda en reportes, enlaces, dedupe/normalizacion de URLs,
+   comentarios ni HTML; conservar los parametros originales de las fuentes.
+   La validacion de host/redirecciones no cambia. No aplica a HTML local.
    Timeout obligatorio de 35 s por URL (home o CLP): carga y lectura de cada URL
    tienen un maximo de 35 s en total. Si no resuelve o no termina a tiempo, abandona
    esa URL (sin reintentos ni esperas adicionales), registrala como ERROR/BLOCKED
