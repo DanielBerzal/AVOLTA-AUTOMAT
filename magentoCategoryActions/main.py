@@ -1,6 +1,7 @@
 """Check or update category status, name and menu inclusion per store view."""
 
 import json
+import os
 import re
 import sys
 import time
@@ -149,6 +150,14 @@ def prompt_exclusions():
             print("Enter valid site URLs or positive store IDs.")
 
 
+DIVISION10_LANGUAGES = {"es": "es", "esfnf": "es", "gr": "gr", "grfnf": "gr", "it": "it", "itfnf": "it"}
+
+
+def division10_language(host):
+    # Division 10 has no language in the URL path; it depends on the subdomain.
+    return DIVISION10_LANGUAGES.get(host.split(".")[0], "en")
+
+
 def load_store_details(divisions):
     workbook = openpyxl.load_workbook(ROOT / "utils" / "stores.xlsx", read_only=True, data_only=True)
     details = {division: {} for division in divisions}
@@ -168,10 +177,13 @@ def load_store_details(divisions):
             if url.lower() in ("", "null"):
                 continue
             host = store_host(url)
-            parts = urlsplit(url if "://" in url else "https://" + url).path.strip("/").split("/")
-            language = parts[-2].lower() if len(parts) >= 2 and parts[-1].isdigit() else ""
-            if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2,4})?", language):
-                language = ""
+            if division == "div10":
+                language = division10_language(host)
+            else:
+                parts = urlsplit(url if "://" in url else "https://" + url).path.strip("/").split("/")
+                language = parts[-2].lower() if len(parts) >= 2 and parts[-1].isdigit() else ""
+                if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2,4})?", language):
+                    language = ""
             detail = (host, language, str(row.get("name") or store_id))
             if store_id in details[division] and details[division][store_id] != detail:
                 raise CategoryActionError(f"{division_label(division)} store {store_id}: conflicting store mappings.")
@@ -222,11 +234,19 @@ def collect_renames(storeviews, details):
     return plan
 
 
-def confirm_renames(category_id, division, plan):
+def print_rename_plan(category_id, division, plan):
     print(f"Intended changes for category {category_id} ({division_label(division)}):")
     for item in plan:
         print(f"{item.store_id} - {item.name} -> {json.dumps(item.title, ensure_ascii=False)}")
-    return prompt_yes_no("Save these changes? (y/n): ")
+
+
+def log(message):
+    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+
+
+def show_browser():
+    # Headless by default so no window steals focus; set MAGENTO_SHOW_BROWSER=1 to watch/debug.
+    return os.environ.get("MAGENTO_SHOW_BROWSER", "").strip().lower() in ("1", "true", "yes")
 
 
 def wait_for_category_form(page, timeout=FORM_WAIT_MS, writable=True):
@@ -519,7 +539,8 @@ def status_lines(label, stores):
 def check_enabled_stores(page, base_url, division, category_id, storeviews, errors, form_timeout=FORM_WAIT_MS):
     enabled_stores = []
     disabled_stores = []
-    for store_id, name in storeviews:
+    for index, (store_id, name) in enumerate(storeviews, 1):
+        log(f"{division_label(division)} - checking store {store_id} - {name} ({index}/{len(storeviews)})")
         try:
             edit_url = category_url(base_url, category_id, store_id)
             page.goto(edit_url, wait_until="domcontentloaded")
@@ -564,6 +585,14 @@ def main(default_action=None, config=None):
             if not any(rename_plans.values()):
                 print("No changes requested; browser/login skipped.")
                 return 0
+            print()
+            for division in divisions:
+                if rename_plans[division]:
+                    print_rename_plan(category_ids[division], division, rename_plans[division])
+            print("Store views missing from a category's selector will be skipped.")
+            if not prompt_yes_no("Apply these changes to non-excluded store views? (y/n): "):
+                print("No changes requested; browser/login skipped.")
+                return 0
         target_enabled = None
         target_menu = None
         if action in ("toggle", "menu"):
@@ -582,7 +611,15 @@ def main(default_action=None, config=None):
                 print("No changes requested; browser/login skipped.")
                 return 0
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=False)
+            headless = not show_browser()
+            log("Starting browser" + (" (headless)." if headless else "."))
+            browser = playwright.chromium.launch(headless=headless, channel="chromium" if headless else None)
+            user_agent = None
+            if headless:
+                # The site's WAF returns 403 to "HeadlessChrome" user agents.
+                probe = browser.new_context()
+                user_agent = probe.new_page().evaluate("navigator.userAgent").replace("HeadlessChrome", "Chrome")
+                probe.close()
             try:
                 for division in divisions:
                     if action == "rename" and not rename_plans[division]:
@@ -591,7 +628,7 @@ def main(default_action=None, config=None):
                     context = None
                     results[division] = []
                     try:
-                        context = browser.new_context(service_workers="block")
+                        context = browser.new_context(service_workers="block", user_agent=user_agent)
                         credentials = config.MAGENTO_CREDENTIALS[division]
                         if not credentials["username"] or not credentials["password"]:
                             raise CategoryActionError("Missing local Magento credentials.")
@@ -600,15 +637,19 @@ def main(default_action=None, config=None):
                         jobs = []
                         try:
                             login_failures = []
+                            log(f"{division_label(division)} - logging in to Magento admin...")
                             if not login_magento_admin(
                                     page, base_url + "dashboard", credentials["username"],
                                     credentials["password"], timeout=60000,
                                     on_failure=login_failures.append):
                                 raise CategoryActionError(login_failures[-1] if login_failures
                                                           else "Magento authentication was not confirmed.")
+                            log(f"{division_label(division)} - logged in; reading store views "
+                                f"of category {category_id}...")
                             storeviews = valid_storeviews(
                                 get_storeviews(page, category_url(base_url, category_id)),
                                 division, category_id, errors)
+                            log(f"{division_label(division)} - {len(storeviews)} store views found.")
                             if action == "check":
                                 results[division] = check_enabled_stores(
                                     page, base_url, division, category_id, storeviews, errors)
@@ -623,11 +664,12 @@ def main(default_action=None, config=None):
                                             if item.store_id in selected_ids]
                                     if not plan:
                                         print(f"No requested store views found in the selector for {division_label(division)}.")
-                                    elif confirm_renames(category_id, division, plan):
+                                    else:
                                         jobs = [(item.store_id, item.title) for item in plan]
                         finally:
                             close_quietly(page)
-                        for store_id, title in jobs:
+                        for index, (store_id, title) in enumerate(jobs, 1):
+                            log(f"{division_label(division)} - store {store_id} ({index}/{len(jobs)})...")
                             attempted = []
                             store_page = None
                             try:
@@ -651,11 +693,13 @@ def main(default_action=None, config=None):
                                 if attempted:
                                     verified_saves += 1
                                 results[division].append(f"store {store_id}: {message}")
+                                log(f"{division_label(division)} - store {store_id}: {message}")
                             except Exception as error:
                                 status = ("save may have committed (unverified)" if attempted
                                           else "not transmitted")
                                 errors.append(report_error(division, category_id, store_id, error, status))
                                 results[division].append(f"store {store_id}: FAILED [{status}].")
+                                log(f"{division_label(division)} - store {store_id}: FAILED [{status}].")
                             finally:
                                 if store_page is not None:
                                     close_quietly(store_page)
